@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Farebné sudoku</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    --bg: #e9f3f8;
+    --panel: #ffffff;
+    --ink: #1f2a44;
+    --muted: #5b6784;
+    --line: #1f2a44;
+    --empty: #f3f7fb;
+    --lock: #dfe8f1;
+    --c1: #e5412d;
+    --c2: #f6c10f;
+    --c3: #38a85a;
+    --c4: #2f6fd6;
+    --c5: #8b4fc2;
+    --accent: #1f2a44;
+    --accent-ink: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141b2d;
+      --panel: #1f2942;
+      --ink: #f1f5ff;
+      --muted: #a6b2d1;
+      --line: #f1f5ff;
+      --empty: #2a3556;
+      --lock: #36426a;
+      --accent: #f1f5ff;
+      --accent-ink: #1f2a44;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141b2d;
+    --panel: #1f2942;
+    --ink: #f1f5ff;
+    --muted: #a6b2d1;
+    --line: #f1f5ff;
+    --empty: #2a3556;
+    --lock: #36426a;
+    --accent: #f1f5ff;
+    --accent-ink: #1f2a44;
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Baloo 2", "Trebuchet MS", "Segoe UI Rounded", system-ui, sans-serif;
+    display: flex;
+    justify-content: center;
+  }
+  main {
+    width: 100%;
+    max-width: 460px;
+    padding: 18px 16px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(30px, 9vw, 42px);
+    font-weight: 800;
+    line-height: 1;
+    display: flex;
+    gap: 3px;
+  }
+  h1 span:nth-child(1) { color: var(--c1); }
+  h1 span:nth-child(2) { color: var(--c2); }
+  h1 span:nth-child(3) { color: var(--c3); }
+  h1 span:nth-child(4) { color: var(--c4); }
+  h1 span:nth-child(5) { color: var(--c5); }
+  h1 .gap { width: 10px; }
+  .rule {
+    margin: 0;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.25;
+    max-width: 340px;
+  }
+  .sizes { display: flex; gap: 10px; }
+  .size-btn {
+    font: inherit; font-weight: 800; font-size: 22px;
+    border: 3px solid var(--line); background: var(--panel); color: var(--ink);
+    border-radius: 999px; padding: 2px 22px; min-height: 46px; cursor: pointer;
+    box-shadow: 0 4px 0 var(--line);
+  }
+  .size-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+  .size-btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .size-btn:focus-visible { outline: 4px solid var(--c4); outline-offset: 3px; }
+  .board-wrap {
+    background: var(--panel);
+    border: 4px solid var(--line);
+    border-radius: 26px;
+    padding: 10px;
+    width: min(100%, 420px);
+    box-shadow: 0 6px 0 var(--line);
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 7px;
+  }
+  .cell {
+    aspect-ratio: 1;
+    border: 3px solid var(--line);
+    border-radius: 16px;
+    background: var(--empty);
+    padding: 0;
+    cursor: pointer;
+    position: relative;
+    display: grid;
+    place-items: center;
+    font: inherit;
+    color: inherit;
+    transition: transform .12s ease;
+  }
+  .cell:not(.given):active { transform: scale(.94); }
+  .cell:focus-visible, .pick:focus-visible, .btn:focus-visible {
+    outline: 4px solid var(--c4);
+    outline-offset: 3px;
+  }
+  .cell.given { background: var(--lock); cursor: not-allowed; border-style: solid; }
+  .cell.given::after {
+    content: "🔒";
+    position: absolute;
+    right: 4px; top: 2px;
+    font-size: 12px;
+    line-height: 1;
+  }
+  .cell:disabled { color: inherit; }
+  .cell.conflict { border-style: dashed; border-width: 4px; animation: wob .35s ease; }
+  .cell.hint-flash { animation: pop .6s ease; }
+  @keyframes wob { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-3deg)} 75%{transform:rotate(3deg)} }
+  @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.18)} 100%{transform:scale(1)} }
+  .blob {
+    width: 74%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 3px solid var(--line);
+    display: grid;
+    place-items: center;
+    box-shadow: inset -4px -5px 0 rgba(0,0,0,.14);
+  }
+  .blob svg { width: 52%; height: 52%; display: none; }
+  .shapes .blob svg { display: block; }
+  .v1 { background: var(--c1); } .v2 { background: var(--c2); } .v3 { background: var(--c3); }
+  .v4 { background: var(--c4); } .v5 { background: var(--c5); }
+  .blob svg * { fill: #fff; stroke: var(--line); stroke-width: 2.5; stroke-linejoin: round; }
+
+  .palette {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .pick {
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    border: 4px solid var(--line);
+    padding: 0;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    font: inherit;
+    box-shadow: 0 4px 0 var(--line);
+    transition: transform .1s ease, box-shadow .1s ease;
+  }
+  .pick svg { width: 50%; height: 50%; display: none; }
+  .shapes .pick svg { display: block; }
+  .pick svg * { fill: #fff; stroke: var(--line); stroke-width: 2.5; stroke-linejoin: round; }
+  .pick.sel { transform: translateY(-8px) scale(1.12); box-shadow: 0 10px 0 var(--line); }
+  .pick.eraser { background: var(--panel); color: var(--ink); font-size: 26px; font-weight: 800; }
+  .pick.done { opacity: .35; }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    font: inherit;
+    font-weight: 700;
+    font-size: 18px;
+    border: 3px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 6px 18px;
+    min-height: 46px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 var(--line);
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+  .btn:disabled { opacity: .4; cursor: default; box-shadow: 0 4px 0 var(--line); transform: none; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); }
+  .btn[aria-pressed="true"] { background: var(--c2); color: #1f2a44; }
+
+  .msg {
+    min-height: 34px;
+    font-size: 21px;
+    font-weight: 700;
+    text-align: center;
+    margin: 0;
+  }
+  .win-overlay {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 10;
+  }
+  .conf {
+    position: absolute;
+    top: -20px;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    animation: fall linear forwards;
+  }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .cell, .pick, .cell.conflict, .cell.hint-flash { animation: none; transition: none; }
+    .conf { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1 aria-label="Farebné sudoku"><span>F</span><span>a</span><span>r</span><span>b</span><span>y</span></h1>
+  <p class="rule">Do každého riadku aj stĺpca daj každú farbu len raz.</p>
+
+  <div class="sizes" role="group" aria-label="Veľkosť hry">
+    <button type="button" class="size-btn" data-n="4" aria-pressed="false">4×4</button>
+    <button type="button" class="size-btn" data-n="5" aria-pressed="true">5×5</button>
+  </div>
+
+  <div class="board-wrap"><div class="board" id="board" role="grid" aria-label="Hracia plocha 5 krát 5"></div></div>
+
+  <div class="palette" id="palette" aria-label="Výber farby"></div>
+
+  <p class="msg" id="msg" aria-live="polite"></p>
+
+  <div class="actions">
+    <button class="btn primary" id="newBtn">Nová hra</button>
+    <button class="btn" id="undoBtn" aria-label="Späť o jeden ťah">↶ Späť</button>
+    <button class="btn" id="hintBtn">Nápoveda</button>
+    <button class="btn" id="shapeBtn" aria-pressed="false">Tvary</button>
+  </div>
+</main>
+<div class="win-overlay" id="win"></div>
+
+<script>
+(function () {
+  var N = 5;
+  var TARGET = { 4: 7, 5: 11 };
+  var NAMES = ["", "červená", "žltá", "zelená", "modrá", "fialová"];
+  var COLORS = ["", "var(--c1)", "var(--c2)", "var(--c3)", "var(--c4)", "var(--c5)"];
+  var SHAPES = [
+    "",
+    '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>',
+    '<svg viewBox="0 0 24 24"><polygon points="12,2.5 14.9,8.9 21.8,9.6 16.6,14.2 18.2,21 12,17.4 5.8,21 7.4,14.2 2.2,9.6 9.1,8.9"/></svg>',
+    '<svg viewBox="0 0 24 24"><polygon points="12,3 22,21 2,21"/></svg>',
+    '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>',
+    '<svg viewBox="0 0 24 24"><polygon points="12,2 22,12 12,22 2,12"/></svg>'
+  ];
+
+  var solution, puzzle, grid, given, selected = 1, finished = false, history = [];
+  var undoBtn = document.getElementById("undoBtn");
+  var boardEl = document.getElementById("board");
+  var paletteEl = document.getElementById("palette");
+  var msgEl = document.getElementById("msg");
+
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function makeSolution() {
+    var idx = [], vals = [];
+    for (var q = 0; q < N; q++) { idx.push(q); vals.push(q + 1); }
+    var rows = shuffle(idx.slice()), cols = shuffle(idx.slice()), sym = shuffle(vals);
+    var g = [];
+    for (var r = 0; r < N; r++) {
+      g.push([]);
+      for (var c = 0; c < N; c++) g[r].push(sym[(rows[r] + cols[c]) % N]);
+    }
+    return g;
+  }
+
+  function countSolutions(g, limit) {
+    var count = 0;
+    function ok(r, c, v) {
+      for (var i = 0; i < N; i++) {
+        if (g[r][i] === v || g[i][c] === v) return false;
+      }
+      return true;
+    }
+    function rec(pos) {
+      if (count >= limit) return;
+      while (pos < N * N && g[Math.floor(pos / N)][pos % N] !== 0) pos++;
+      if (pos === N * N) { count++; return; }
+      var r = Math.floor(pos / N), c = pos % N;
+      for (var v = 1; v <= N; v++) {
+        if (ok(r, c, v)) {
+          g[r][c] = v;
+          rec(pos + 1);
+          g[r][c] = 0;
+        }
+      }
+    }
+    rec(0);
+    return count;
+  }
+
+  function makePuzzle(sol, targetGivens) {
+    var p = sol.map(function (row) { return row.slice(); });
+    var order = shuffle(Array.apply(null, Array(N * N)).map(function (_, i) { return i; }));
+    var left = N * N;
+    for (var k = 0; k < order.length && left > targetGivens; k++) {
+      var r = Math.floor(order[k] / N), c = order[k] % N;
+      var keep = p[r][c];
+      p[r][c] = 0;
+      var copy = p.map(function (row) { return row.slice(); });
+      if (countSolutions(copy, 2) !== 1) p[r][c] = keep; else left--;
+    }
+    return p;
+  }
+
+  function conflicts() {
+    var bad = {};
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        var v = grid[r][c];
+        if (!v) continue;
+        for (var i = 0; i < N; i++) {
+          if (i !== c && grid[r][i] === v) { bad[r + "," + c] = true; bad[r + "," + i] = true; }
+          if (i !== r && grid[i][c] === v) { bad[r + "," + c] = true; bad[i + "," + c] = true; }
+        }
+      }
+    }
+    return bad;
+  }
+
+  function blobHTML(v) {
+    return '<span class="blob v' + v + '">' + SHAPES[v] + '</span>';
+  }
+
+  function renderBoard(flash) {
+    var bad = conflicts();
+    boardEl.innerHTML = "";
+    for (var r = 0; r < N; r++) {
+      for (var c = 0; c < N; c++) {
+        var v = grid[r][c];
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "cell" + (given[r][c] ? " given" : "") + (bad[r + "," + c] ? " conflict" : "") +
+          (flash && flash[0] === r && flash[1] === c ? " hint-flash" : "");
+        b.setAttribute("role", "gridcell");
+        b.setAttribute("aria-label", "Riadok " + (r + 1) + ", stĺpec " + (c + 1) + ": " + (v ? NAMES[v] : "prázdne"));
+        b.dataset.r = r; b.dataset.c = c;
+        if (given[r][c]) b.disabled = true;
+        b.innerHTML = v ? blobHTML(v) : "";
+        boardEl.appendChild(b);
+      }
+    }
+    renderPaletteState();
+    undoBtn.disabled = history.length === 0;
+  }
+
+  function renderPalette() {
+    paletteEl.innerHTML = "";
+    for (var v = 1; v <= N; v++) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "pick";
+      b.style.background = COLORS[v];
+      b.dataset.v = v;
+      b.setAttribute("aria-label", NAMES[v]);
+      b.innerHTML = SHAPES[v];
+      paletteEl.appendChild(b);
+    }
+    var e = document.createElement("button");
+    e.type = "button";
+    e.className = "pick eraser";
+    e.dataset.v = 0;
+    e.setAttribute("aria-label", "Guma");
+    e.textContent = "✕";
+    paletteEl.appendChild(e);
+  }
+
+  function renderPaletteState() {
+    var counts = [0,0,0,0,0,0];
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) counts[grid[r][c]]++;
+    var picks = paletteEl.querySelectorAll(".pick");
+    for (var i = 0; i < picks.length; i++) {
+      var v = Number(picks[i].dataset.v);
+      picks[i].classList.toggle("sel", v === selected);
+      picks[i].classList.toggle("done", v > 0 && counts[v] === N && v !== selected);
+      picks[i].setAttribute("aria-pressed", v === selected ? "true" : "false");
+    }
+  }
+
+  function isSolved() {
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) if (grid[r][c] !== solution[r][c]) return false;
+    return true;
+  }
+
+  function setMsg(t, color) { msgEl.textContent = t; msgEl.style.color = color || "var(--ink)"; }
+
+  function confetti() {
+    var wrap = document.getElementById("win");
+    wrap.innerHTML = "";
+    var cols = ["#e5412d", "#f6c10f", "#38a85a", "#2f6fd6", "#8b4fc2"];
+    for (var i = 0; i < 70; i++) {
+      var d = document.createElement("div");
+      d.className = "conf";
+      d.style.left = Math.random() * 100 + "vw";
+      d.style.background = cols[i % cols.length];
+      d.style.animationDuration = (2 + Math.random() * 2) + "s";
+      d.style.animationDelay = (Math.random() * 0.6) + "s";
+      wrap.appendChild(d);
+    }
+    setTimeout(function () { wrap.innerHTML = ""; }, 5000);
+  }
+
+  function checkWin() {
+    var full = true;
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) if (!grid[r][c]) full = false;
+    if (full && Object.keys(conflicts()).length === 0) {
+      finished = true;
+      setMsg("Hotovo! Si šikovný! 🎉", "var(--c3)");
+      confetti();
+    }
+  }
+
+  function newGame() {
+    boardEl.style.gridTemplateColumns = "repeat(" + N + ", 1fr)";
+    boardEl.setAttribute("aria-label", "Hracia plocha " + N + " krát " + N);
+    solution = makeSolution();
+    puzzle = makePuzzle(solution, TARGET[N]);
+    grid = puzzle.map(function (row) { return row.slice(); });
+    given = puzzle.map(function (row) { return row.map(function (v) { return v !== 0; }); });
+    selected = 1;
+    finished = false;
+    history = [];
+    document.getElementById("win").innerHTML = "";
+    setMsg("Vyber farbu a ťukni na prázdne políčko.");
+    renderBoard();
+  }
+
+  boardEl.addEventListener("click", function (ev) {
+    var cell = ev.target.closest(".cell");
+    if (!cell || finished) return;
+    var r = Number(cell.dataset.r), c = Number(cell.dataset.c);
+    if (given[r][c]) return;
+    var prev = grid[r][c];
+    var next = (selected === 0 || prev === selected) ? 0 : selected;
+    if (next === prev) return;
+    history.push({ r: r, c: c, prev: prev });
+    grid[r][c] = next;
+    renderBoard();
+    var bad = Object.keys(conflicts()).length;
+    if (bad) setMsg("Pozor, farby sa opakujú (čiarkované políčka).", "var(--muted)");
+    else setMsg("");
+    checkWin();
+  });
+
+  paletteEl.addEventListener("click", function (ev) {
+    var p = ev.target.closest(".pick");
+    if (!p) return;
+    selected = Number(p.dataset.v);
+    renderPaletteState();
+  });
+
+  document.getElementById("newBtn").addEventListener("click", newGame);
+
+  document.getElementById("hintBtn").addEventListener("click", function () {
+    if (finished) return;
+    var options = [];
+    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) {
+      if (!given[r][c] && grid[r][c] !== solution[r][c]) options.push([r, c]);
+    }
+    if (!options.length) return;
+    var pick = options[Math.floor(Math.random() * options.length)];
+    history.push({ r: pick[0], c: pick[1], prev: grid[pick[0]][pick[1]] });
+    grid[pick[0]][pick[1]] = solution[pick[0]][pick[1]];
+    renderBoard(pick);
+    setMsg("Tu je správna farba.", "var(--muted)");
+    checkWin();
+  });
+
+  undoBtn.addEventListener("click", function () {
+    var m = history.pop();
+    if (!m) return;
+    grid[m.r][m.c] = m.prev;
+    finished = false;
+    document.getElementById("win").innerHTML = "";
+    renderBoard();
+    setMsg(Object.keys(conflicts()).length ? "Pozor, farby sa opakujú (čiarkované políčka)." : "", "var(--muted)");
+  });
+
+  var shapeBtn = document.getElementById("shapeBtn");
+  shapeBtn.addEventListener("click", function () {
+    var on = document.body.classList.toggle("shapes");
+    shapeBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+
+  var sizeBtns = document.querySelectorAll(".size-btn");
+  for (var si = 0; si < sizeBtns.length; si++) {
+    sizeBtns[si].addEventListener("click", function () {
+      var n = Number(this.dataset.n);
+      if (n === N) return;
+      N = n;
+      for (var k = 0; k < sizeBtns.length; k++) {
+        sizeBtns[k].setAttribute("aria-pressed", Number(sizeBtns[k].dataset.n) === N ? "true" : "false");
+      }
+      renderPalette();
+      newGame();
+    });
+  }
+
+  renderPalette();
+  newGame();
+})();
+</script>
+</body>
+</html>
