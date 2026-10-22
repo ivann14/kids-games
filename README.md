@@ -17,4 +17,4 @@ Každá ďalšia hra ide do vlastného priečinka (`<nazov>/index.html`) a prid�
 
 ## GitHub Pages
 
-Settings → Pages → Deploy from a branch → `main` / `/ (root)`.
+https://ivann14.github.io/kids-games
