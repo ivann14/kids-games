@@ -35,6 +35,7 @@
     --c5: #8b4fc2;
     --accent: #1f2a44;
     --accent-ink: #ffffff;
+    --hl: #ffd84d;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -47,6 +48,7 @@
       --lock: #36426a;
       --accent: #f1f5ff;
       --accent-ink: #1f2a44;
+      --hl: #c99a00;
     }
   }
   :root[data-theme="dark"] {
@@ -59,6 +61,7 @@
     --lock: #36426a;
     --accent: #f1f5ff;
     --accent-ink: #1f2a44;
+    --hl: #c99a00;
   }
   /* pan-x pan-y = scroll allowed, pinch and double-tap zoom blocked */
   html { scroll-padding-top: env(safe-area-inset-top, 0px); touch-action: pan-x pan-y; }
@@ -165,6 +168,16 @@
   .cell.hint-flash { animation: pop .6s ease; }
   @keyframes wob { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-3deg)} 75%{transform:rotate(3deg)} }
   @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.18)} 100%{transform:scale(1)} }
+  /* Row/column teaching arrows; rings on neighbouring cells overlap the gap into one band. */
+  .guide {
+    font: inherit; font-weight: 800; font-size: 22px; line-height: 1;
+    border: 0; background: none; color: var(--ink);
+    padding: 0; cursor: pointer; border-radius: 12px;
+    display: grid; place-items: center; min-height: 30px;
+  }
+  .guide[aria-pressed="true"] { background: var(--hl); color: #1f2a44; }
+  .guide:focus-visible { outline: 4px solid var(--c4); outline-offset: 2px; }
+  .cell.hl { box-shadow: 0 0 0 5px var(--hl); }
   .blob {
     width: 74%;
     aspect-ratio: 1;
@@ -273,6 +286,7 @@
     <button class="btn" id="undoBtn" aria-label="Späť o jeden ťah">↶ Späť</button>
     <button class="btn" id="hintBtn">Nápoveda</button>
     <button class="btn" id="shapeBtn" aria-pressed="false">Tvary</button>
+    <button class="btn" id="guideBtn" aria-pressed="false">Riadky a stĺpce</button>
   </div>
 </main>
 <div class="win-overlay" id="win"></div>
@@ -293,6 +307,7 @@
   ];
 
   var solution, puzzle, grid, given, selected = 1, finished = false, history = [];
+  var guides = false, hl = null; // hl = { kind: "r" | "c", i: index }
   var undoBtn = document.getElementById("undoBtn");
   var boardEl = document.getElementById("board");
   var paletteEl = document.getElementById("palette");
@@ -376,16 +391,34 @@
     return '<span class="blob v' + v + '">' + SHAPES[v] + '</span>';
   }
 
+  function guideBtn(kind, i) {
+    var g = document.createElement("button");
+    g.type = "button";
+    g.className = "guide";
+    g.dataset.kind = kind; g.dataset.i = i;
+    g.textContent = kind === "r" ? "→" : "↓";
+    g.setAttribute("aria-label", "Ukáž " + (i + 1) + ". " + (kind === "r" ? "riadok" : "stĺpec"));
+    g.setAttribute("aria-pressed", hl && hl.kind === kind && hl.i === i ? "true" : "false");
+    return g;
+  }
+
   function renderBoard(flash) {
     var bad = conflicts();
     boardEl.innerHTML = "";
+    boardEl.style.gridTemplateColumns = (guides ? "30px " : "") + "repeat(" + N + ", 1fr)";
+    if (guides) {
+      boardEl.appendChild(document.createElement("span"));
+      for (var gc = 0; gc < N; gc++) boardEl.appendChild(guideBtn("c", gc));
+    }
     for (var r = 0; r < N; r++) {
+      if (guides) boardEl.appendChild(guideBtn("r", r));
       for (var c = 0; c < N; c++) {
         var v = grid[r][c];
         var b = document.createElement("button");
         b.type = "button";
         b.className = "cell" + (given[r][c] ? " given" : "") + (bad[r + "," + c] ? " conflict" : "") +
-          (flash && flash[0] === r && flash[1] === c ? " hint-flash" : "");
+          (flash && flash[0] === r && flash[1] === c ? " hint-flash" : "") +
+          (hl && (hl.kind === "r" ? hl.i === r : hl.i === c) ? " hl" : "");
         b.setAttribute("role", "gridcell");
         b.setAttribute("aria-label", "Riadok " + (r + 1) + ", stĺpec " + (c + 1) + ": " + (v ? NAMES[v] : "prázdne"));
         b.dataset.r = r; b.dataset.c = c;
@@ -465,7 +498,6 @@
   }
 
   function newGame() {
-    boardEl.style.gridTemplateColumns = "repeat(" + N + ", 1fr)";
     boardEl.setAttribute("aria-label", "Hracia plocha " + N + " krát " + N);
     solution = makeSolution();
     puzzle = makePuzzle(solution, TARGET[N]);
@@ -474,12 +506,25 @@
     selected = 1;
     finished = false;
     history = [];
+    hl = null;
     document.getElementById("win").innerHTML = "";
     setMsg("Vyber farbu a ťukni na prázdne políčko.");
     renderBoard();
   }
 
   boardEl.addEventListener("click", function (ev) {
+    var g = ev.target.closest(".guide");
+    if (g) {
+      var kind = g.dataset.kind, i = Number(g.dataset.i);
+      hl = hl && hl.kind === kind && hl.i === i ? null : { kind: kind, i: i };
+      renderBoard();
+      if (!finished) {
+        setMsg(!hl ? "" : kind === "r"
+          ? "Toto je " + (i + 1) + ". riadok. Ide zľava doprava →"
+          : "Toto je " + (i + 1) + ". stĺpec. Ide zhora dole ↓", "var(--muted)");
+      }
+      return;
+    }
     var cell = ev.target.closest(".cell");
     if (!cell || finished) return;
     var r = Number(cell.dataset.r), c = Number(cell.dataset.c);
@@ -534,6 +579,15 @@
   shapeBtn.addEventListener("click", function () {
     var on = document.body.classList.toggle("shapes");
     shapeBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+
+  var guideToggle = document.getElementById("guideBtn");
+  guideToggle.addEventListener("click", function () {
+    guides = !guides;
+    hl = null;
+    guideToggle.setAttribute("aria-pressed", guides ? "true" : "false");
+    if (!finished) setMsg(guides ? "Ťukni na šípku a ukáže sa riadok alebo stĺpec." : "");
+    renderBoard();
   });
 
   var sizeBtns = document.querySelectorAll(".size-btn");
