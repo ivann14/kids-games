@@ -518,11 +518,6 @@
       var kind = g.dataset.kind, i = Number(g.dataset.i);
       hl = hl && hl.kind === kind && hl.i === i ? null : { kind: kind, i: i };
       renderBoard();
-      if (!finished) {
-        setMsg(!hl ? "" : kind === "r"
-          ? "Toto je " + (i + 1) + ". riadok. Ide zľava doprava →"
-          : "Toto je " + (i + 1) + ". stĺpec. Ide zhora dole ↓", "var(--muted)");
-      }
       return;
     }
     var cell = ev.target.closest(".cell");
@@ -586,7 +581,6 @@
     guides = !guides;
     hl = null;
     guideToggle.setAttribute("aria-pressed", guides ? "true" : "false");
-    if (!finished) setMsg(guides ? "Ťukni na šípku a ukáže sa riadok alebo stĺpec." : "");
     renderBoard();
   });
 
