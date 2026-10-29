@@ -178,6 +178,11 @@
   .guide[aria-pressed="true"] { background: var(--hl); color: #1f2a44; }
   .guide:focus-visible { outline: 4px solid var(--c4); outline-offset: 2px; }
   .cell.hl { box-shadow: 0 0 0 5px var(--hl); }
+  /* Whole row/column with a repeated colour; blinks 3x when the mistake first appears. */
+  .cell.bad-line { box-shadow: 0 0 0 5px var(--c1); }
+  .cell.bad-blink { animation: blink .45s ease 3; }
+  .cell.conflict.bad-blink { animation: wob .35s ease, blink .45s ease 3; }
+  @keyframes blink { 50% { box-shadow: 0 0 0 5px transparent; } }
   .blob {
     width: 74%;
     aspect-ratio: 1;
@@ -260,7 +265,7 @@
   }
   @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
   @media (prefers-reduced-motion: reduce) {
-    .cell, .pick, .cell.conflict, .cell.hint-flash { animation: none; transition: none; }
+    .cell, .pick, .cell.conflict, .cell.hint-flash, .cell.bad-blink { animation: none; transition: none; }
     .conf { display: none; }
   }
 </style>
@@ -308,6 +313,7 @@
 
   var solution, puzzle, grid, given, selected = 1, finished = false, history = [];
   var guides = false, hl = null; // hl = { kind: "r" | "c", i: index }
+  var prevBadLines = {}; // "r1" / "c3" keys from the last render, so only new mistakes blink
   var undoBtn = document.getElementById("undoBtn");
   var boardEl = document.getElementById("board");
   var paletteEl = document.getElementById("palette");
@@ -387,6 +393,19 @@
     return bad;
   }
 
+  function badLines() {
+    var lines = {};
+    for (var a = 0; a < N; a++) {
+      for (var b = 0; b < N; b++) {
+        for (var k = b + 1; k < N; k++) {
+          if (grid[a][b] && grid[a][b] === grid[a][k]) lines["r" + a] = true;
+          if (grid[b][a] && grid[b][a] === grid[k][a]) lines["c" + a] = true;
+        }
+      }
+    }
+    return lines;
+  }
+
   function blobHTML(v) {
     return '<span class="blob v' + v + '">' + SHAPES[v] + '</span>';
   }
@@ -404,6 +423,7 @@
 
   function renderBoard(flash) {
     var bad = conflicts();
+    var lines = badLines();
     boardEl.innerHTML = "";
     boardEl.style.gridTemplateColumns = (guides ? "30px " : "") + "repeat(" + N + ", 1fr)";
     if (guides) {
@@ -418,7 +438,9 @@
         b.type = "button";
         b.className = "cell" + (given[r][c] ? " given" : "") + (bad[r + "," + c] ? " conflict" : "") +
           (flash && flash[0] === r && flash[1] === c ? " hint-flash" : "") +
-          (hl && (hl.kind === "r" ? hl.i === r : hl.i === c) ? " hl" : "");
+          (hl && (hl.kind === "r" ? hl.i === r : hl.i === c) ? " hl" : "") +
+          (lines["r" + r] || lines["c" + c] ? " bad-line" : "") +
+          ((lines["r" + r] && !prevBadLines["r" + r]) || (lines["c" + c] && !prevBadLines["c" + c]) ? " bad-blink" : "");
         b.setAttribute("role", "gridcell");
         b.setAttribute("aria-label", "Riadok " + (r + 1) + ", stĺpec " + (c + 1) + ": " + (v ? NAMES[v] : "prázdne"));
         b.dataset.r = r; b.dataset.c = c;
@@ -427,6 +449,7 @@
         boardEl.appendChild(b);
       }
     }
+    prevBadLines = lines;
     renderPaletteState();
     undoBtn.disabled = history.length === 0;
   }
