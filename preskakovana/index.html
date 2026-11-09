@@ -444,9 +444,11 @@
     var continuing = lastMoved && lastMoved[0] === fr && lastMoved[1] === fc;
     lastFrom = continuing ? lastFrom : [fr, fc];
     lastMoved = [tr, tc];
-    selected = null;
+    // Keep the piece picked up on its new square so the child can jump again.
+    selected = selected && selected[0] === fr && selected[1] === fc ? [tr, tc] : null;
     if (inGoal(p) === COUNT) {
       winner = p;
+      selected = null;
       render();
       setMsg(PLAYERS[p].name + " vyhráva! 🎉", p === "red" ? "var(--red)" : "var(--blue)");
       confetti();

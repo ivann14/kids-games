@@ -1,5 +1,5 @@
 // Bump VERSION when shipping changes so clients drop the old cache.
-const VERSION = 'preskakovana-v1';
+const VERSION = 'preskakovana-v2';
 const SHELL = [
   './',
   './index.html',
