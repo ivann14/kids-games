@@ -107,8 +107,9 @@
   }
   .player.top { transform: rotate(180deg); }
   .player .dot {
-    width: 24px; height: 24px; border-radius: 50%;
-    border: 3px solid var(--line); flex: none;
+    position: relative; overflow: hidden;
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 3px solid #1f2a44; flex: none;
   }
 
   .board-wrap {
@@ -140,21 +141,25 @@
     content: ""; position: absolute; inset: 0;
     box-shadow: inset 0 0 0 4px var(--hl);
   }
+  /* Light square: not allowed. Red frame while hovering, short red blink after a wrong tap or drop. */
+  .sq.nodrop::after {
+    content: ""; position: absolute; inset: 0;
+    box-shadow: inset 0 0 0 5px var(--red);
+  }
+  .sq.nodrop.blink::after { animation: nodrop .3s ease 3; }
+  @keyframes nodrop { 50% { box-shadow: inset 0 0 0 5px transparent; } }
   .piece {
     position: relative;
-    width: 78%;
+    width: 88%;
     aspect-ratio: 1;
     border-radius: 50%;
     border: 3px solid #1f2a44;
+    overflow: hidden;
     box-shadow: inset -4px -5px 0 rgba(0,0,0,.18), 0 3px 0 rgba(0,0,0,.25);
     transition: transform .12s ease;
     pointer-events: none;
   }
-  .piece::after {
-    content: ""; position: absolute;
-    left: 22%; top: 18%; width: 26%; height: 22%;
-    border-radius: 50%; background: rgba(255,255,255,.45);
-  }
+  .piece svg, .dot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
   .piece.red { background: var(--red); }
   .piece.blue { background: var(--blue); }
   .sq.movable { cursor: grab; }
@@ -192,6 +197,14 @@
   }
   .menu::backdrop { background: rgba(20, 27, 45, .45); }
   .menu .col { display: flex; flex-direction: column; gap: 12px; }
+  .pic-row { display: flex; align-items: center; gap: 10px; }
+  .pic-row .dot {
+    position: relative; overflow: hidden; flex: none;
+    width: 44px; height: 44px; border-radius: 50%; border: 3px solid #1f2a44;
+  }
+  .pic-row .btn { flex: 1; padding: 4px 10px; font-size: 16px; min-height: 40px; }
+  .pic-row .btn.x { flex: none; width: 40px; padding: 0; }
+  .piece img, .dot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .menu a.btn { text-decoration: none; text-align: center; }
   .rules { color: var(--muted); font-size: 16px; line-height: 1.3; text-align: center; margin: 0; }
 
@@ -245,14 +258,14 @@
 <body>
 <main>
   <div class="player top">
-    <span class="dot" style="background: var(--blue)"></span>
+    <span class="dot" id="dBlue" style="background: var(--blue)"></span>
     <span id="sBlue"></span>
   </div>
 
   <div class="board-wrap"><div class="board" id="board" role="grid" aria-label="Šachovnica 8 krát 8"></div></div>
 
   <div class="player bottom">
-    <span class="dot" style="background: var(--red)"></span>
+    <span class="dot" id="dRed" style="background: var(--red)"></span>
     <span id="sRed"></span>
   </div>
 </main>
@@ -263,8 +276,19 @@
   <div class="col">
     <button class="btn primary" id="newBtn">Nová hra</button>
     <button class="btn" id="undoBtn" aria-label="Späť o jeden ťah">↶ Späť</button>
+    <div class="pic-row">
+      <span class="dot" id="mBlue" style="background: var(--blue)"></span>
+      <button class="btn" data-pick="blue">Obrázok modrých</button>
+      <button class="btn x" data-clear="blue" aria-label="Vrátiť psíka modrým">✕</button>
+    </div>
+    <div class="pic-row">
+      <span class="dot" id="mRed" style="background: var(--red)"></span>
+      <button class="btn" data-pick="red">Obrázok červených</button>
+      <button class="btn x" data-clear="red" aria-label="Vrátiť psíka červeným">✕</button>
+    </div>
+    <input type="file" id="picFile" accept="image/*" hidden>
     <a class="btn" href="../">⌂ Všetky hry</a>
-    <p class="rules">Figúrka ide o políčko ktorýmkoľvek smerom alebo preskakuje cez iné figúrky – aj viackrát za sebou. Kto prvý dostane všetkých 8 figúrok do súperových dvoch radov, vyhráva.</p>
+    <p class="rules">Figúrky chodia len po tmavých poliach, teda šikmo. Figúrka ide o políčko alebo preskakuje cez iné figúrky – aj viackrát za sebou. Policajný psík (bígl) hrá za modrých, hasičský psík za červených. Kto prvý dostane všetkých 8 psíkov do súperových dvoch radov, vyhráva.</p>
     <button class="btn" id="closeBtn">Zavrieť</button>
   </div>
 </dialog>
@@ -280,10 +304,66 @@
   var N = 8;
   // Red starts on the dark squares of the bottom two rows and aims for the top two; blue the other way round.
   var PLAYERS = {
-    red:  { name: "Červený", start: [N - 2, N - 1], goal: [0, 1] },
-    blue: { name: "Modrý",   start: [0, 1],         goal: [N - 2, N - 1] }
+    red:  { name: "Hasičský psík", start: [N - 2, N - 1], goal: [0, 1] },
+    blue: { name: "Policajný psík", start: [0, 1],         goal: [N - 2, N - 1] }
   };
   var COUNT = 8;
+
+  // Original cartoon puppies drawn for this game: a beagle police pup (blue team)
+  // and a dalmatian fire pup (red team). Thick outlines + big shiny eyes for a cartoon look.
+  var O = ' stroke="#1f2a44" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"';
+  function eyes(iris) {
+    return '<ellipse cx="39" cy="58" rx="7.5" ry="9"' + O + ' fill="#fff"/>' +
+      '<ellipse cx="61" cy="58" rx="7.5" ry="9"' + O + ' fill="#fff"/>' +
+      '<circle cx="40" cy="60" r="5.6" fill="' + iris + '"/><circle cx="60" cy="60" r="5.6" fill="' + iris + '"/>' +
+      '<circle cx="40" cy="60.5" r="3.2" fill="#1f2a44"/><circle cx="60" cy="60.5" r="3.2" fill="#1f2a44"/>' +
+      '<circle cx="42.2" cy="57.6" r="2" fill="#fff"/><circle cx="62.2" cy="57.6" r="2" fill="#fff"/>' +
+      '<circle cx="38.3" cy="62.6" r=".9" fill="#fff"/><circle cx="58.3" cy="62.6" r=".9" fill="#fff"/>';
+  }
+  var MOUTH =
+    '<ellipse cx="29" cy="70" rx="5" ry="3" fill="#ff8fa3" opacity=".7"/>' +
+    '<ellipse cx="71" cy="70" rx="5" ry="3" fill="#ff8fa3" opacity=".7"/>' +
+    '<path d="M42 73 Q50 86 58 73 Z"' + O + ' fill="#8a1f2c"/>' +
+    '<path d="M45.5 78.5 Q50 75 54.5 78.5 Q53 83 50 83 Q47 83 45.5 78.5 Z" fill="#ff7a8a"/>' +
+    '<path d="M44.5 69.5 Q50 63.5 55.5 69.5 Q55 73.5 50 73.5 Q45 73.5 44.5 69.5 Z"' + O + ' fill="#1f2a44"/>' +
+    '<ellipse cx="48" cy="67.8" rx="2" ry="1" fill="#fff" opacity=".8"/>';
+  var FACES = {
+    blue: '<svg viewBox="10 9 80 80" aria-hidden="true">' +
+      // floppy beagle ears
+      '<path d="M26 48 Q12 52 15 74 Q18 84 27 78 Q30 64 31 52 Z"' + O + ' fill="#8a4b22"/>' +
+      '<path d="M74 48 Q88 52 85 74 Q82 84 73 78 Q70 64 69 52 Z"' + O + ' fill="#8a4b22"/>' +
+      // head, white blaze and muzzle
+      '<path d="M50 38 Q78 38 79 62 Q79 86 50 86 Q21 86 21 62 Q22 38 50 38 Z"' + O + ' fill="#d98c45"/>' +
+      '<path d="M46 44 Q50 41 54 44 L56 62 Q66 64 66 74 Q64 86 50 86 Q36 86 34 74 Q34 64 44 62 Z" fill="#fff6ea"/>' +
+      eyes("#7a4a1e") +
+      '<path d="M32 47 Q37 44.5 42 47 M58 47 Q63 44.5 68 47"' + O + ' fill="none"/>' + MOUTH +
+      // police cap: crown, band, visor, star badge
+      '<path d="M22 44 Q20 26 50 22 Q80 26 78 44 Z"' + O + ' fill="#2f6fd6"/>' +
+      '<path d="M30 30 Q50 24 70 30" stroke="#6fa0ef" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+      '<rect x="22" y="38" width="56" height="8" rx="3"' + O + ' fill="#163d85"/>' +
+      '<path d="M30 46 Q50 53 70 46 Z"' + O + ' fill="#1f2a44"/>' +
+      '<path d="M50 27.5 l2.8 5.6 6.2 .9 -4.5 4.4 1.1 6.1 -5.6-2.9 -5.6 2.9 1.1-6.1 -4.5-4.4 6.2-.9 z"' + O + ' stroke-width="1.6" fill="#ffd84d"/>' +
+      '</svg>',
+    red: '<svg viewBox="10 9 80 80" aria-hidden="true">' +
+      // floppy black ears
+      '<path d="M27 46 Q11 50 15 72 Q18 82 28 76 Q31 62 32 50 Z"' + O + ' fill="#2b2b33"/>' +
+      '<path d="M73 46 Q89 50 85 72 Q82 82 72 76 Q69 62 68 50 Z"' + O + ' fill="#2b2b33"/>' +
+      // white head with spots
+      '<path d="M50 38 Q78 38 79 62 Q79 86 50 86 Q21 86 21 62 Q22 38 50 38 Z"' + O + ' fill="#ffffff"/>' +
+      '<circle cx="27" cy="62" r="3" fill="#2b2b33"/><circle cx="72" cy="58" r="2.4" fill="#2b2b33"/>' +
+      '<circle cx="66" cy="79" r="2.6" fill="#2b2b33"/><circle cx="33" cy="80" r="2" fill="#2b2b33"/>' +
+      '<circle cx="29" cy="74" r="1.6" fill="#2b2b33"/>' +
+      eyes("#3b82c4") +
+      '<path d="M32 47 Q37 44.5 42 47 M58 47 Q63 44.5 68 47"' + O + ' fill="none"/>' + MOUTH +
+      // fire helmet: dome, ridge, wide brim, gold shield
+      '<path d="M23 45 Q21 22 50 20 Q79 22 77 45 Z"' + O + ' fill="#e5412d"/>' +
+      '<path d="M50 20 Q55 32 52 45 L48 45 Q45 32 50 20 Z"' + O + ' stroke-width="1.8" fill="#b72a1a"/>' +
+      '<path d="M31 30 Q36 25 42 24" stroke="#ff9a8a" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+      '<path d="M14 46 Q50 38 86 46 Q86 51 80 51 Q50 45 20 51 Q14 51 14 46 Z"' + O + ' fill="#b72a1a"/>' +
+      '<path d="M43 27 H57 V36 Q50 43 43 36 Z"' + O + ' stroke-width="1.8" fill="#ffd84d"/>' +
+      '<circle cx="50" cy="33" r="2.4" fill="#e5412d"/>' +
+      '</svg>'
+  };
 
   // No turn order: kids take turns themselves and may fix any piece at any time.
   var grid, lastMoved, lastFrom, history, winner, selected;
@@ -318,7 +398,7 @@
         d.setAttribute("role", "gridcell");
         d.setAttribute("aria-label", String.fromCharCode(97 + c) + (N - r) + ": " +
           (p ? PLAYERS[p].name.toLowerCase() : "prázdne"));
-        if (p) d.innerHTML = '<span class="piece ' + p + '"></span>';
+        if (p) d.innerHTML = '<span class="piece ' + p + '">' + look(p) + '</span>';
         boardEl.appendChild(d);
       }
     }
@@ -351,8 +431,11 @@
     setTimeout(function () { wrap.innerHTML = ""; }, 5000);
   }
 
+  // Pieces live only on the dark squares (same parity as the starting squares).
+  function isDark(r, c) { return (r + c) % 2 === 1; }
+
   function move(fr, fc, tr, tc) {
-    if (grid[tr][tc] || (fr === tr && fc === tc)) return false;
+    if (grid[tr][tc] || !isDark(tr, tc) || (fr === tr && fc === tc)) return false;
     var p = grid[fr][fc];
     history.push({ fr: fr, fc: fc, tr: tr, tc: tc, lastMoved: lastMoved, lastFrom: lastFrom });
     grid[tr][tc] = p;
@@ -401,8 +484,21 @@
   }
 
   function clearDrop() {
-    var d = boardEl.querySelector(".sq.drop");
-    if (d) d.classList.remove("drop");
+    var d = boardEl.querySelectorAll(".sq.drop, .sq.nodrop");
+    for (var i = 0; i < d.length; i++) d[i].classList.remove("drop", "nodrop", "blink");
+  }
+
+  function sqEl(r, c) { return boardEl.querySelector('.sq[data-r="' + r + '"][data-c="' + c + '"]'); }
+
+  // Blink the light square red so the child sees why the piece did not go there.
+  var noTimer = null;
+  function flashNo(r, c) {
+    if (isDark(r, c)) return;
+    var el = sqEl(r, c);
+    if (!el) return;
+    el.classList.add("nodrop", "blink");
+    clearTimeout(noTimer);
+    noTimer = setTimeout(function () { el.classList.remove("nodrop", "blink"); }, 950);
   }
 
   boardEl.addEventListener("pointerdown", function (ev) {
@@ -414,7 +510,8 @@
       drag = { r: r, c: c, x: ev.clientX, y: ev.clientY, ghost: null, el: sq, id: ev.pointerId };
       boardEl.setPointerCapture(ev.pointerId);
     } else if (selected && !grid[r][c]) {
-      move(selected[0], selected[1], r, c);
+      // Tap on a light square keeps the piece picked up, so the child can try again.
+      if (!move(selected[0], selected[1], r, c)) { render(); flashNo(r, c); }
     } else {
       selected = null;
       render();
@@ -438,7 +535,11 @@
     drag.ghost.style.top = ev.clientY + "px";
     clearDrop();
     var sq = squareAt(ev.clientX, ev.clientY);
-    if (sq && !grid[Number(sq.dataset.r)][Number(sq.dataset.c)]) sq.classList.add("drop");
+    if (sq) {
+      var sr = Number(sq.dataset.r), sc = Number(sq.dataset.c);
+      if (!isDark(sr, sc)) sq.classList.add("nodrop");
+      else if (!grid[sr][sc]) sq.classList.add("drop");
+    }
   });
 
   function endDrag(ev, cancelled) {
@@ -450,7 +551,10 @@
       d.ghost.remove();
       d.el.classList.remove("dragging");
       var sq = cancelled ? null : squareAt(ev.clientX, ev.clientY);
-      if (!sq || !move(d.r, d.c, Number(sq.dataset.r), Number(sq.dataset.c))) render();
+      if (!sq || !move(d.r, d.c, Number(sq.dataset.r), Number(sq.dataset.c))) {
+        render();
+        if (sq) flashNo(Number(sq.dataset.r), Number(sq.dataset.c));
+      }
       return;
     }
     // Plain tap: pick the piece up, or put it back down if it was already picked.
@@ -487,6 +591,69 @@
     render();
   });
 
+  // ---- custom pictures: picked from the device, kept only in this browser ----
+  var KEY = "preskakovana-pic-";
+  var pics = {};
+  ["blue", "red"].forEach(function (p) {
+    try { pics[p] = localStorage.getItem(KEY + p) || null; } catch (e) { pics[p] = null; }
+  });
+
+  function look(p) {
+    return pics[p] ? '<img src="' + pics[p] + '" alt="">' : FACES[p];
+  }
+
+  function paintDots() {
+    document.getElementById("dBlue").innerHTML = look("blue");
+    document.getElementById("dRed").innerHTML = look("red");
+    document.getElementById("mBlue").innerHTML = look("blue");
+    document.getElementById("mRed").innerHTML = look("red");
+  }
+
+  function setPic(p, url) {
+    pics[p] = url;
+    try {
+      if (url) localStorage.setItem(KEY + p, url); else localStorage.removeItem(KEY + p);
+    } catch (e) { /* storage full or blocked: picture still works until reload */ }
+    paintDots();
+    render();
+  }
+
+  // Crop the middle square and shrink it so it stores small and draws fast.
+  function loadPic(file, p) {
+    var img = new Image();
+    var src = URL.createObjectURL(file);
+    img.onload = function () {
+      var side = Math.min(img.naturalWidth, img.naturalHeight);
+      var c = document.createElement("canvas");
+      c.width = c.height = 200;
+      var g = c.getContext("2d");
+      // JPEG has no transparency, so see-through parts (webp/png) would turn black; paint white first.
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, 200, 200);
+      g.drawImage(img,
+        (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 200, 200);
+      URL.revokeObjectURL(src);
+      setPic(p, c.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = function () { URL.revokeObjectURL(src); };
+    img.src = src;
+  }
+
+  var picFile = document.getElementById("picFile");
+  var picFor = null;
+  menu.addEventListener("click", function (ev) {
+    var b = ev.target.closest("[data-pick], [data-clear]");
+    if (!b) return;
+    if (b.dataset.clear) { setPic(b.dataset.clear, null); return; }
+    picFor = b.dataset.pick;
+    picFile.value = "";
+    picFile.click();
+  });
+  picFile.addEventListener("change", function () {
+    if (picFile.files[0] && picFor) loadPic(picFile.files[0], picFor);
+  });
+
+  paintDots();
   newGame();
 })();
 
