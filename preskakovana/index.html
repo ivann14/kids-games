@@ -136,10 +136,22 @@
     content: ""; position: absolute; left: 50%; transform: translateX(-50%);
     border-left: 12px solid transparent; border-right: 12px solid transparent;
   }
-  .lane.blue .shaft::after { top: 100%; border-top: 16px solid var(--blue); }
-  .lane.red .shaft::after { bottom: 100%; border-bottom: 16px solid var(--red); }
-  .lane.blue .shaft, .lane.blue .ldot { background: var(--blue); }
-  .lane.red .shaft, .lane.red .ldot { background: var(--red); }
+  .lane.blue .shaft::after { top: 100%; border-top: 16px solid var(--arrow-blue, var(--blue)); }
+  .lane.red .shaft::after { bottom: 100%; border-bottom: 16px solid var(--arrow-red, var(--red)); }
+  .lane.blue .shaft { background: var(--arrow-blue, var(--blue)); }
+  .lane.red .shaft { background: var(--arrow-red, var(--red)); }
+  .lane.blue .ldot { background: var(--blue); }
+  .lane.red .ldot { background: var(--red); }
+  /* Arrow colour pickers in the settings menu. */
+  .arrow-row { display: flex; flex-direction: column; gap: 6px; }
+  .arrow-row .label { font-weight: 700; font-size: 16px; color: var(--muted); }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch {
+    width: 38px; height: 38px; border-radius: 50%; padding: 0; cursor: pointer;
+    border: 3px solid #1f2a44;
+  }
+  .swatch[aria-pressed="true"] { box-shadow: 0 0 0 4px var(--hl); transform: scale(1.1); }
+  .swatch:focus-visible { outline: 4px solid var(--blue); outline-offset: 3px; }
 
   .board-wrap {
     width: var(--board);
@@ -325,6 +337,14 @@
       <button class="btn x" data-clear="red" aria-label="Vrátiť psíka červeným">✕</button>
     </div>
     <input type="file" id="picFile" accept="image/*" hidden>
+    <div class="arrow-row">
+      <span class="label">Farba šípky modrých</span>
+      <div class="swatches" data-arrow="blue" role="group" aria-label="Farba šípky modrých"></div>
+    </div>
+    <div class="arrow-row">
+      <span class="label">Farba šípky červených</span>
+      <div class="swatches" data-arrow="red" role="group" aria-label="Farba šípky červených"></div>
+    </div>
     <a class="btn" href="../">⌂ Všetky hry</a>
     <p class="rules">Figúrky chodia len po tmavých poliach, teda šikmo. Figúrka ide o políčko alebo preskakuje cez iné figúrky – aj viackrát za sebou. Policajný psík (bígl) hrá za modrých, hasičský psík za červených. Kto prvý dostane všetkých 8 psíkov do súperových dvoch radov, vyhráva.</p>
     <button class="btn" id="closeBtn">Zavrieť</button>
@@ -695,6 +715,46 @@
     if (picFile.files[0] && picFor) loadPic(picFile.files[0], picFor);
   });
 
+  // ---- arrow colours beside the board, kept in this browser ----
+  var ARROW_COLORS = [
+    ["#2f6fd6", "modrá"], ["#e5412d", "červená"], ["#38a85a", "zelená"],
+    ["#f6c10f", "žltá"], ["#8b4fc2", "fialová"], ["#f28c28", "oranžová"], ["#ec5fa8", "ružová"]
+  ];
+  var ARROW_KEY = "preskakovana-arrow-";
+  var arrowColor = { blue: "#2f6fd6", red: "#e5412d" };
+  ["blue", "red"].forEach(function (p) {
+    try { arrowColor[p] = localStorage.getItem(ARROW_KEY + p) || arrowColor[p]; } catch (e) {}
+  });
+  function paintArrows() {
+    var rootStyle = document.documentElement.style;
+    rootStyle.setProperty("--arrow-blue", arrowColor.blue);
+    rootStyle.setProperty("--arrow-red", arrowColor.red);
+    var groups = document.querySelectorAll("[data-arrow]");
+    for (var g = 0; g < groups.length; g++) {
+      var team = groups[g].dataset.arrow;
+      groups[g].innerHTML = "";
+      ARROW_COLORS.forEach(function (col) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "swatch";
+        b.style.background = col[0];
+        b.dataset.color = col[0];
+        b.setAttribute("aria-label", col[1]);
+        b.setAttribute("aria-pressed", arrowColor[team] === col[0] ? "true" : "false");
+        groups[g].appendChild(b);
+      });
+    }
+  }
+  menu.addEventListener("click", function (ev) {
+    var sw = ev.target.closest(".swatch");
+    if (!sw) return;
+    var team = sw.parentNode.dataset.arrow;
+    arrowColor[team] = sw.dataset.color;
+    try { localStorage.setItem(ARROW_KEY + team, arrowColor[team]); } catch (e) {}
+    paintArrows();
+  });
+
+  paintArrows();
   paintDots();
   newGame();
 })();
