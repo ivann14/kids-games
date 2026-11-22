@@ -1,5 +1,5 @@
 // Bump VERSION when shipping changes so clients drop the old cache.
-const VERSION = 'sudoku-v3';
+const VERSION = 'sudoku-v4';
 const SHELL = [
   './',
   './index.html',

@@ -604,8 +604,12 @@
     var prev = grid[r][c];
     var next = (selected === 0 || prev === selected) ? 0 : selected;
     if (next === prev) return;
-    if (livesMode && next !== 0 && next !== solution[r][c]) {
-      // Wrong colour: it is not placed, one heart is lost.
+    var clash = false;
+    for (var i = 0; i < N; i++) {
+      if ((i !== c && grid[r][i] === next) || (i !== r && grid[i][c] === next)) clash = true;
+    }
+    if (livesMode && next !== 0 && clash) {
+      // Colour already in this row or column: it is not placed, one heart is lost.
       lives--;
       renderHearts(lives);
       renderBoard([r, c]);
@@ -617,7 +621,7 @@
           document.getElementById("retryBtn").focus();
         }, 600);
       } else {
-        setMsg("Ups, tá farba tam nepatrí. " + (lives === 1 ? "Zostáva 1 srdiečko." : "Zostávajú " + lives + " srdiečka."), "var(--c1)");
+        setMsg("Ups, táto farba už je v tom riadku alebo stĺpci. " + (lives === 1 ? "Zostáva 1 srdiečko." : "Zostávajú " + lives + " srdiečka."), "var(--c1)");
       }
       return;
     }
