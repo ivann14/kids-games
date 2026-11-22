@@ -165,9 +165,32 @@
   }
   .cell:disabled { color: inherit; }
   .cell.conflict { border-style: dashed; border-width: 4px; animation: wob .35s ease; }
-  .cell.hint-flash { animation: pop .6s ease; }
+  .cell.wrong { animation: wob .35s ease; box-shadow: 0 0 0 5px var(--c1); }
   @keyframes wob { 0%,100%{transform:rotate(0)} 25%{transform:rotate(-3deg)} 75%{transform:rotate(3deg)} }
   @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.18)} 100%{transform:scale(1)} }
+  /* Lives mode: three hearts, a wrong colour costs one. */
+  .hearts { display: flex; gap: 8px; font-size: 34px; line-height: 1; min-height: 40px; }
+  .hearts[hidden] { display: none; }
+  .heart { color: var(--c1); transition: opacity .3s ease, filter .3s ease; }
+  .heart.lost { opacity: .25; filter: grayscale(1); }
+  .heart.breaking { animation: pop .5s ease; }
+  .lose-overlay {
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(20, 27, 45, .55);
+    display: grid; place-items: center; padding: 16px;
+  }
+  .lose-overlay[hidden] { display: none; }
+  .lose-card {
+    background: var(--panel); color: var(--ink);
+    border: 4px solid var(--line); border-radius: 26px;
+    box-shadow: 0 6px 0 var(--line);
+    padding: 22px 24px; max-width: 340px; width: 100%;
+    display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+    animation: pop .4s ease;
+  }
+  .lose-card .big { font-size: 54px; line-height: 1; }
+  .lose-card h2 { margin: 0; font-size: 28px; font-weight: 800; }
+  .lose-card p { margin: 0; font-size: 18px; color: var(--muted); }
   /* Row/column teaching arrows; rings on neighbouring cells overlap the gap into one band. */
   .guide {
     font: inherit; font-weight: 800; font-size: 22px; line-height: 1;
@@ -265,7 +288,7 @@
   }
   @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
   @media (prefers-reduced-motion: reduce) {
-    .cell, .pick, .cell.conflict, .cell.hint-flash, .cell.bad-blink { animation: none; transition: none; }
+    .cell, .pick, .cell.conflict, .cell.wrong, .cell.bad-blink, .heart, .lose-card { animation: none; transition: none; }
     .conf { display: none; }
   }
 </style>
@@ -280,6 +303,8 @@
     <button type="button" class="size-btn" data-n="5" aria-pressed="true">5×5</button>
   </div>
 
+  <div class="hearts" id="hearts" role="img" hidden></div>
+
   <div class="board-wrap"><div class="board" id="board" role="grid" aria-label="Hracia plocha 5 krát 5"></div></div>
 
   <div class="palette" id="palette" aria-label="Výber farby"></div>
@@ -289,12 +314,20 @@
   <div class="actions">
     <button class="btn primary" id="newBtn">Nová hra</button>
     <button class="btn" id="undoBtn" aria-label="Späť o jeden ťah">↶ Späť</button>
-    <button class="btn" id="hintBtn">Nápoveda</button>
+    <button class="btn" id="livesBtn" aria-pressed="false">❤️ Životy</button>
     <button class="btn" id="shapeBtn" aria-pressed="false">Tvary</button>
     <button class="btn" id="guideBtn" aria-pressed="false">Riadky a stĺpce</button>
   </div>
 </main>
 <div class="win-overlay" id="win"></div>
+<div class="lose-overlay" id="lose" role="dialog" aria-modal="true" aria-labelledby="loseTitle" hidden>
+  <div class="lose-card">
+    <div class="big" aria-hidden="true">💔</div>
+    <h2 id="loseTitle">Minuli sa srdiečka</h2>
+    <p>Nevadí, skús to znova!</p>
+    <button class="btn primary" id="retryBtn">Začať znova</button>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -312,6 +345,11 @@
   ];
 
   var solution, puzzle, grid, given, selected = 1, finished = false, history = [];
+  var MAX_LIVES = 3;
+  var livesMode = false, lives = MAX_LIVES;
+  try { livesMode = localStorage.getItem("sudoku-lives") === "1"; } catch (e) {}
+  var heartsEl = document.getElementById("hearts");
+  var loseEl = document.getElementById("lose");
   var guides = false, hl = null; // hl = { kind: "r" | "c", i: index }
   var prevBadLines = {}; // "r1" / "c3" keys from the last render, so only new mistakes blink
   var undoBtn = document.getElementById("undoBtn");
@@ -421,6 +459,19 @@
     return g;
   }
 
+  function renderHearts(breaking) {
+    heartsEl.hidden = !livesMode;
+    heartsEl.innerHTML = "";
+    heartsEl.setAttribute("aria-label", "Životy: " + lives + " z " + MAX_LIVES);
+    for (var i = 0; i < MAX_LIVES; i++) {
+      var h = document.createElement("span");
+      h.className = "heart" + (i >= lives ? " lost" : "") + (i === breaking ? " breaking" : "");
+      h.textContent = "❤";
+      h.setAttribute("aria-hidden", "true");
+      heartsEl.appendChild(h);
+    }
+  }
+
   function renderBoard(flash) {
     var bad = conflicts();
     var lines = badLines();
@@ -437,7 +488,7 @@
         var b = document.createElement("button");
         b.type = "button";
         b.className = "cell" + (given[r][c] ? " given" : "") + (bad[r + "," + c] ? " conflict" : "") +
-          (flash && flash[0] === r && flash[1] === c ? " hint-flash" : "") +
+          (flash && flash[0] === r && flash[1] === c ? " wrong" : "") +
           (hl && (hl.kind === "r" ? hl.i === r : hl.i === c) ? " hl" : "") +
           (lines["r" + r] || lines["c" + c] ? " bad-line" : "") +
           ((lines["r" + r] && !prevBadLines["r" + r]) || (lines["c" + c] && !prevBadLines["c" + c]) ? " bad-blink" : "");
@@ -530,8 +581,11 @@
     finished = false;
     history = [];
     hl = null;
+    lives = MAX_LIVES;
+    loseEl.hidden = true;
     document.getElementById("win").innerHTML = "";
     setMsg("Vyber farbu a ťukni na prázdne políčko.");
+    renderHearts();
     renderBoard();
   }
 
@@ -550,6 +604,23 @@
     var prev = grid[r][c];
     var next = (selected === 0 || prev === selected) ? 0 : selected;
     if (next === prev) return;
+    if (livesMode && next !== 0 && next !== solution[r][c]) {
+      // Wrong colour: it is not placed, one heart is lost.
+      lives--;
+      renderHearts(lives);
+      renderBoard([r, c]);
+      if (lives <= 0) {
+        finished = true;
+        setMsg("");
+        setTimeout(function () {
+          loseEl.hidden = false;
+          document.getElementById("retryBtn").focus();
+        }, 600);
+      } else {
+        setMsg("Ups, tá farba tam nepatrí. " + (lives === 1 ? "Zostáva 1 srdiečko." : "Zostávajú " + lives + " srdiečka."), "var(--c1)");
+      }
+      return;
+    }
     history.push({ r: r, c: c, prev: prev });
     grid[r][c] = next;
     renderBoard();
@@ -568,20 +639,17 @@
 
   document.getElementById("newBtn").addEventListener("click", newGame);
 
-  document.getElementById("hintBtn").addEventListener("click", function () {
-    if (finished) return;
-    var options = [];
-    for (var r = 0; r < N; r++) for (var c = 0; c < N; c++) {
-      if (!given[r][c] && grid[r][c] !== solution[r][c]) options.push([r, c]);
-    }
-    if (!options.length) return;
-    var pick = options[Math.floor(Math.random() * options.length)];
-    history.push({ r: pick[0], c: pick[1], prev: grid[pick[0]][pick[1]] });
-    grid[pick[0]][pick[1]] = solution[pick[0]][pick[1]];
-    renderBoard(pick);
-    setMsg("Tu je správna farba.", "var(--muted)");
-    checkWin();
+  document.getElementById("retryBtn").addEventListener("click", newGame);
+
+  var livesBtn = document.getElementById("livesBtn");
+  function syncLivesBtn() { livesBtn.setAttribute("aria-pressed", livesMode ? "true" : "false"); }
+  livesBtn.addEventListener("click", function () {
+    livesMode = !livesMode;
+    try { localStorage.setItem("sudoku-lives", livesMode ? "1" : "0"); } catch (e) {}
+    syncLivesBtn();
+    newGame();
   });
+  syncLivesBtn();
 
   undoBtn.addEventListener("click", function () {
     var m = history.pop();
